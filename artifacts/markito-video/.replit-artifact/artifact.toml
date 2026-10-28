@@ -1,0 +1,31 @@
+kind = "video"
+previewPath = "/markito-video/"
+title = "Markito | Vídeo de Apresentação"
+version = "1.0.0"
+id = "artifacts/markito-video"
+router = "path"
+
+[[integratedSkills]]
+name = "video-js"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/markito-video/" ]
+localPort = 21120
+
+[services.development]
+run = "pnpm --filter @workspace/markito-video run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/markito-video", "run", "build" ]
+publicDir = "artifacts/markito-video/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21120"
+BASE_PATH = "/markito-video/"

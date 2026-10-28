@@ -1,0 +1,307 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: openai
+    description: OpenAI AI chat, image, and audio operations
+paths:
+  /privacy/proof:
+    post:
+      operationId: createPrivacyProof
+      summary: Generate a single-use session proof valid for 15 minutes
+      responses:
+        "201":
+          description: Session proof
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, expiresInMinutes]
+                properties:
+                  code: { type: string }
+                  expiresInMinutes: { type: integer }
+  /admin/privacy:
+    get:
+      operationId: getPrivacyAdministration
+      summary: Retention candidates and recent audit events (admin only)
+      responses:
+        "200":
+          description: Retention policy, expired conversations and audit events
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+  /admin/privacy/action:
+    post:
+      operationId: executePrivacyAction
+      summary: Confirmed and audited access, export or deletion (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrivacyActionInput"
+      responses:
+        "200":
+          description: Operation result, including conversation and messages for access/export
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "400": { description: Invalid input or confirmation }
+        "403": { description: Invalid or expired identity verification }
+        "404": { description: Conversation not found }
+        "409": { description: Conversation is active or retention has not expired }
+  /admin/privacy/purge-audit:
+    post:
+      operationId: purgeExpiredPrivacyAudit
+      summary: Manually remove audit events older than 365 days (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrivacyPurgeInput"
+      responses:
+        "200":
+          description: Number of removed events
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /openai/conversations:
+    get:
+      operationId: listOpenaiConversations
+      tags: [openai]
+      summary: List all conversations
+      responses:
+        "200":
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OpenaiConversation"
+    post:
+      operationId: createOpenaiConversation
+      tags: [openai]
+      summary: Create a new conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOpenaiConversationBody"
+      responses:
+        "201":
+          description: Created conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiConversation"
+  /openai/conversations/{id}:
+    get:
+      operationId: getOpenaiConversation
+      tags: [openai]
+      summary: Get conversation with messages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Conversation with messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiConversationWithMessages"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
+    delete:
+      operationId: deleteOpenaiConversation
+      tags: [openai]
+      summary: Delete a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
+  /openai/conversations/{id}/messages:
+    get:
+      operationId: listOpenaiMessages
+      tags: [openai]
+      summary: List messages in a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OpenaiMessage"
+    post:
+      operationId: sendOpenaiMessage
+      tags: [openai]
+      summary: Send a text message and receive a streaming text response
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendOpenaiMessageBody"
+      responses:
+        "200":
+          description: SSE stream of assistant text chunks
+          content:
+            text/event-stream: {}
+components:
+  schemas:
+    PrivacyPurgeInput:
+      type: object
+      required: [confirmation]
+      properties:
+        confirmation: { type: string, enum: [EXCLUIR AUDITORIA VENCIDA] }
+    PrivacyActionInput:
+      type: object
+      required: [conversationId, action, verification, reference, confirmation]
+      properties:
+        conversationId: { type: integer, minimum: 1, maximum: 2147483647 }
+        action: { type: string, enum: [access, export, delete] }
+        verification: { type: string, enum: [session, independent, retention] }
+        reference: { type: string, minLength: 5, maxLength: 120 }
+        code: { type: string, maxLength: 64 }
+        independentVerified: { type: boolean }
+        confirmation: { type: string, maxLength: 80 }
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    OpenaiConversation:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - createdAt
+    OpenaiMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        conversationId:
+          type: integer
+        role:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - conversationId
+        - role
+        - content
+        - createdAt
+    CreateOpenaiConversationBody:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required:
+        - title
+    SendOpenaiMessageBody:
+      type: object
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 4000
+      required:
+        - content
+    OpenaiConversationWithMessages:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpenaiMessage"
+      required:
+        - id
+        - title
+        - createdAt
+        - messages
+    OpenaiError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
